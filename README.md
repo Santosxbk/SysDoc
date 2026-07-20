@@ -42,6 +42,16 @@ python -m pip install -r requirements.txt
 pip install sysdoc
 ```
 
+### One-command setup
+
+SysDoc can also guide the full setup for your platform:
+
+```bash
+python main.py install
+```
+
+This will print the commands needed to install the external tools and Python dependencies automatically.
+
 ---
 
 ## Quick start

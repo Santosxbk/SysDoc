@@ -22,3 +22,4 @@
 - Basic security posture assessment
 - Intelligent system diagnosis across CPU, memory and disk
 - TXT, JSON and HTML report export
+- Automated installation guidance for Python dependencies and external tools

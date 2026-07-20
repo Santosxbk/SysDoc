@@ -19,6 +19,7 @@ from sysdoc.network import get_default_gateway, get_dns_servers, get_interfaces,
 from sysdoc.reports.exporters import export_html_report, export_json_report, export_text_report
 from sysdoc.security.security import analyze_security
 from sysdoc.ui.banner import build_banner, create_console
+from sysdoc.utils.installer import build_install_commands, run_installation
 from sysdoc.utils.system import get_cpu_info, get_disk_info, get_memory_info, get_os_name, get_python_version
 
 configure_logging("INFO")
@@ -395,6 +396,25 @@ def doctor_fix() -> None:
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception("Doctor fix command failed: %s", exc)
         typer.echo(f"Unable to apply doctor fix: {exc}", err=True)
+
+
+@app.command()
+def install() -> None:
+    """Print or suggest the commands needed to fully install SysDoc and its dependencies."""
+
+    try:
+        steps = run_installation()
+        table = Table(title="Installation")
+        table.add_column("Step")
+        if steps:
+            for index, step in enumerate(steps, start=1):
+                table.add_row(str(index), step)
+        else:
+            table.add_row("1", "No installation steps were detected for this platform.")
+        console.print(table)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("Install command failed: %s", exc)
+        typer.echo(f"Unable to prepare installation steps: {exc}", err=True)
 
 
 if __name__ == "__main__":
