@@ -1,0 +1,10 @@
+rich>=13.7
+Typer>=0.12
+psutil>=6.0
+requests>=2.31
+ping3>=4.0
+dnspython>=2.3
+tabulate>=0.9
+colorama>=0.4
+PyYAML>=6.0
+pytest>=8.0

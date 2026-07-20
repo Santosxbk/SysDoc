@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sysdoc"
+version = "0.1.0"
+description = "Modern cross-platform system diagnostics toolkit"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{name = "Santosxbk"}]
+dependencies = [
+  "rich>=13.7",
+  "typer>=0.12",
+  "psutil>=6.0",
+  "requests>=2.31",
+  "ping3>=4.0",
+  "dnspython>=2.3",
+  "tabulate>=0.9",
+  "colorama>=0.4",
+  "PyYAML>=6.0",
+  "Jinja2>=3.1"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+sysdoc = "sysdoc.cli.app:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
