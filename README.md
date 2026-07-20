@@ -48,7 +48,7 @@ Designed for:
 ## Installation
 
 ```bash
-git clone https://github.com/SEU_USUARIO/sysdoc.git
+git clone https://github.com/Santosxbk/SysDoc.git
 
 cd sysdoc
 
