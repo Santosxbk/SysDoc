@@ -50,7 +50,7 @@ Designed for:
 ```bash
 git clone https://github.com/Santosxbk/SysDoc.git
 
-cd sysdoc
+cd SysDoc
 
 pip install -r requirements.txt
 ```
