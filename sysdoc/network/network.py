@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import struct
 from typing import Any
 
 import psutil
@@ -12,6 +13,28 @@ from dns import resolver
 from ping3 import ping
 
 logger = logging.getLogger(__name__)
+
+
+def _read_default_gateway_from_proc() -> str | None:
+    """Read the default gateway from Linux /proc/net/route."""
+
+    try:
+        with open("/proc/net/route", "r", encoding="utf-8") as handle:
+            lines = handle.read().splitlines()[1:]
+        for line in lines:
+            fields = line.split()
+            if len(fields) < 3:
+                continue
+            iface, destination, gateway_hex, *_ = fields
+            if destination == "00000000" and gateway_hex != "00000000":
+                gateway = socket.inet_ntoa(struct.pack("<L", int(gateway_hex, 16)))
+                return gateway if iface else None
+        return None
+    except OSError:
+        return None
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("Unable to read route table: %s", exc)
+        return None
 
 
 def get_interfaces() -> list[dict[str, Any]]:
@@ -32,9 +55,17 @@ def get_default_gateway() -> str | None:
     """Return the default gateway address when available."""
 
     try:
-        gateways = psutil.net_if_addrs().get("eth0") or psutil.net_if_addrs().get("en0")
-        if gateways:
-            return next((address.address for address in gateways if address.family == socket.AF_INET), None)
+        gateway = _read_default_gateway_from_proc()
+        if gateway:
+            return gateway
+
+        net_if_addrs = psutil.net_if_addrs()
+        for interface_name, addrs in net_if_addrs.items():
+            if interface_name.startswith(("lo", "docker", "br-")):
+                continue
+            for addr in addrs:
+                if addr.family == socket.AF_INET and addr.address and not addr.address.startswith("127."):
+                    return addr.address
         return None
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.exception("Unable to determine default gateway: %s", exc)

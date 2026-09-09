@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.table import Table
 
+from sysdoc import __version__
 from sysdoc.config import AppConfig, load_config, save_config
 from sysdoc.diagnostics.advanced import run_nmap_scan, scan_ports
 from sysdoc.diagnostics.intelligent import diagnose_system
@@ -27,6 +30,51 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="Modern cross-platform system diagnostics toolkit")
 console = create_console()
+JSON_OUTPUT = False
+
+
+@app.callback()
+def main(
+    json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON output."),
+) -> None:
+    """Shared CLI options."""
+
+    global JSON_OUTPUT
+    JSON_OUTPUT = json_output
+
+
+def display_value(value: Any) -> str:
+    """Normalize values that may be absent or empty for CLI display."""
+
+    if value is None:
+        return "Unknown"
+    if isinstance(value, str):
+        return value.strip() or "Unknown"
+    if isinstance(value, (list, tuple, set)):
+        return ", ".join(str(item) for item in value) if value else "Unknown"
+    return str(value)
+
+
+def emit_cli_error(command_name: str, exc: Exception) -> None:
+    """Log and print a consistent CLI error message."""
+
+    logger.exception("%s command failed: %s", command_name, exc)
+    typer.echo(f"Unable to {command_name}: {exc}", err=True)
+
+
+def output_json_or_table(payload: dict[str, Any], title: str) -> None:
+    """Emit either JSON output or a rich table based on the current CLI options."""
+
+    if JSON_OUTPUT:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+
+    table = Table(title=title)
+    table.add_column("Metric")
+    table.add_column("Value")
+    for key, value in payload.items():
+        table.add_row(str(key), display_value(value))
+    console.print(table)
 
 
 def _load_config() -> AppConfig:
@@ -40,21 +88,22 @@ def scan() -> None:
     """Run a quick system scan and present a summary."""
 
     try:
-        config = _load_config()
+        _load_config()
         console.print(build_banner())
         table = Table(title="System Overview")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("OS", get_os_name())
-        table.add_row("Python", get_python_version())
-        table.add_row("CPU cores", str(get_cpu_info()["cores"]))
-        table.add_row("Memory", f"{get_memory_info()['total_gb']} GB")
-        table.add_row("Disk", f"{get_disk_info()['total_gb']} GB")
-        console.print(table)
+        payload = {
+            "OS": display_value(get_os_name()),
+            "Python": display_value(get_python_version()),
+            "CPU cores": display_value(get_cpu_info()["cores"]),
+            "Memory": f"{get_memory_info()['total_gb']} GB",
+            "Disk": f"{get_disk_info()['total_gb']} GB",
+        }
+        output_json_or_table(payload, "System Overview")
         logger.info("Scan completed")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Scan command failed: %s", exc)
-        typer.echo(f"Unable to complete scan: {exc}", err=True)
+        emit_cli_error("complete scan", exc)
 
 
 @app.command()
@@ -62,10 +111,9 @@ def version() -> None:
     """Show the current SysDoc version."""
 
     try:
-        console.print(build_banner(title="SYSDOC", subtitle="Version 0.1.0"))
+        console.print(build_banner(title="SYSDOC", subtitle=f"Version {__version__}"))
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Version command failed: %s", exc)
-        typer.echo(f"Unable to display version: {exc}", err=True)
+        emit_cli_error("display version", exc)
 
 
 @app.command()
@@ -77,8 +125,7 @@ def init() -> None:
         config_path = save_config(config, Path("config.yaml"))
         console.print(f"Configuration written to [cyan]{config_path}[/cyan]")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Init command failed: %s", exc)
-        typer.echo(f"Unable to initialize configuration: {exc}", err=True)
+        emit_cli_error("initialize configuration", exc)
 
 
 @app.command()
@@ -91,17 +138,18 @@ def cpu() -> None:
         table = Table(title="CPU")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("Model", str(data["model"]))
-        table.add_row("Cores", str(data["cores"]))
-        table.add_row("Physical cores", str(data["physical_cores"]))
-        table.add_row("Frequency", f"{data['frequency']} MHz")
-        table.add_row("Usage", f"{data['usage']} %")
-        table.add_row("Severity", analysis["severity"])
-        table.add_row("Recommendation", analysis["recommendation"])
-        console.print(table)
+        payload = {
+            "Model": display_value(data["model"]),
+            "Cores": display_value(data["cores"]),
+            "Physical cores": display_value(data["physical_cores"]),
+            "Frequency": f"{data['frequency']} MHz",
+            "Usage": f"{data['usage']} %",
+            "Severity": display_value(analysis["severity"]),
+            "Recommendation": display_value(analysis["recommendation"]),
+        }
+        output_json_or_table(payload, "CPU")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("CPU command failed: %s", exc)
-        typer.echo(f"Unable to show CPU info: {exc}", err=True)
+        emit_cli_error("show CPU info", exc)
 
 
 @app.command()
@@ -114,16 +162,17 @@ def ram() -> None:
         table = Table(title="RAM")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("Total", f"{data['total_gb']} GB")
-        table.add_row("Used", f"{data['used_gb']} GB")
-        table.add_row("Available", f"{data['available_gb']} GB")
-        table.add_row("Usage", f"{data['percent']} %")
-        table.add_row("Severity", analysis["severity"])
-        table.add_row("Recommendation", analysis["recommendation"])
-        console.print(table)
+        payload = {
+            "Total": f"{data['total_gb']} GB",
+            "Used": f"{data['used_gb']} GB",
+            "Available": f"{data['available_gb']} GB",
+            "Usage": f"{data['percent']} %",
+            "Severity": display_value(analysis["severity"]),
+            "Recommendation": display_value(analysis["recommendation"]),
+        }
+        output_json_or_table(payload, "RAM")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("RAM command failed: %s", exc)
-        typer.echo(f"Unable to show memory info: {exc}", err=True)
+        emit_cli_error("show memory info", exc)
 
 
 @app.command()
@@ -136,16 +185,17 @@ def disk() -> None:
         table = Table(title="Disk")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("Total", f"{data['total_gb']} GB")
-        table.add_row("Used", f"{data['used_gb']} GB")
-        table.add_row("Free", f"{data['free_gb']} GB")
-        table.add_row("Usage", f"{data['percent']} %")
-        table.add_row("Severity", analysis["severity"])
-        table.add_row("Recommendation", analysis["recommendation"])
-        console.print(table)
+        payload = {
+            "Total": f"{data['total_gb']} GB",
+            "Used": f"{data['used_gb']} GB",
+            "Free": f"{data['free_gb']} GB",
+            "Usage": f"{data['percent']} %",
+            "Severity": display_value(analysis["severity"]),
+            "Recommendation": display_value(analysis["recommendation"]),
+        }
+        output_json_or_table(payload, "Disk")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Disk command failed: %s", exc)
-        typer.echo(f"Unable to show disk info: {exc}", err=True)
+        emit_cli_error("show disk info", exc)
 
 
 @app.command()
@@ -153,17 +203,15 @@ def network() -> None:
     """Display network interface and routing information."""
 
     try:
-        table = Table(title="Network")
-        table.add_column("Metric")
-        table.add_column("Value")
-        table.add_row("Interfaces", str(len(get_interfaces())))
-        table.add_row("Gateway", str(get_default_gateway() or "Unknown"))
-        table.add_row("Public IP", str(get_public_ip() or "Unknown"))
-        table.add_row("DNS", ", ".join(get_dns_servers()) or "Unknown")
-        console.print(table)
+        payload = {
+            "Interfaces": str(len(get_interfaces())),
+            "Gateway": display_value(get_default_gateway()),
+            "Public IP": display_value(get_public_ip()),
+            "DNS": display_value(", ".join(get_dns_servers()) or "Unknown"),
+        }
+        output_json_or_table(payload, "Network")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Network command failed: %s", exc)
-        typer.echo(f"Unable to show network info: {exc}", err=True)
+        emit_cli_error("show network info", exc)
 
 
 @app.command()
@@ -181,8 +229,7 @@ def dns() -> None:
             table.add_row("No DNS servers detected")
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("DNS command failed: %s", exc)
-        typer.echo(f"Unable to show DNS info: {exc}", err=True)
+        emit_cli_error("show DNS info", exc)
 
 
 @app.command()
@@ -197,8 +244,7 @@ def ping() -> None:
         table.add_row("127.0.0.1", f"{latency} s" if latency is not None else "failed")
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Ping command failed: %s", exc)
-        typer.echo(f"Unable to run ping check: {exc}", err=True)
+        emit_cli_error("run ping check", exc)
 
 
 @app.command()
@@ -210,14 +256,13 @@ def gpu() -> None:
         table = Table(title="GPU")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("Model", data["model"])
+        table.add_row("Model", display_value(data["model"]))
         table.add_row("Memory", f"{data['memory_mb']} MB")
-        table.add_row("Driver", data["driver"])
-        table.add_row("Available", str(data["available"]))
+        table.add_row("Driver", display_value(data["driver"]))
+        table.add_row("Available", display_value(data["available"]))
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("GPU command failed: %s", exc)
-        typer.echo(f"Unable to show GPU info: {exc}", err=True)
+        emit_cli_error("show GPU info", exc)
 
 
 @app.command()
@@ -229,14 +274,13 @@ def battery() -> None:
         table = Table(title="Battery")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("Available", str(data["available"]))
+        table.add_row("Available", display_value(data["available"]))
         table.add_row("Percent", f"{data['percent']} %")
-        table.add_row("Plugged", str(data["plugged"]))
-        table.add_row("Remaining hours", str(data["remaining_hours"]))
+        table.add_row("Plugged", display_value(data["plugged"]))
+        table.add_row("Remaining hours", display_value(data["remaining_hours"]))
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Battery command failed: %s", exc)
-        typer.echo(f"Unable to show battery info: {exc}", err=True)
+        emit_cli_error("show battery info", exc)
 
 
 @app.command()
@@ -251,13 +295,14 @@ def temperatures() -> None:
         table.add_column("High")
         if data["readings"]:
             for entry in data["readings"]:
-                table.add_row(entry["name"], f"{entry['current']} C", str(entry["high"]) if entry["high"] is not None else "n/a")
+                current = display_value(entry["current"])
+                high = display_value(entry["high"])
+                table.add_row(entry["name"], f"{current} C" if current != "Unknown" else "Unknown", high if high != "Unknown" else "n/a")
         else:
             table.add_row("No readings", "n/a", "n/a")
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Temperature command failed: %s", exc)
-        typer.echo(f"Unable to show temperature info: {exc}", err=True)
+        emit_cli_error("show temperature info", exc)
 
 
 @app.command()
@@ -269,13 +314,12 @@ def security() -> None:
         table = Table(title="Security")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("Root", str(data["is_root"]))
-        table.add_row("Issues", ", ".join(data["issues"]) or "None")
-        table.add_row("Recommendation", data["recommendation"])
+        table.add_row("Root", display_value(data["is_root"]))
+        table.add_row("Issues", display_value(", ".join(data["issues"]) or "None"))
+        table.add_row("Recommendation", display_value(data["recommendation"]))
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Security command failed: %s", exc)
-        typer.echo(f"Unable to show security info: {exc}", err=True)
+        emit_cli_error("show security info", exc)
 
 
 @app.command()
@@ -287,13 +331,14 @@ def doctor() -> None:
         table = Table(title="Doctor")
         table.add_column("Metric")
         table.add_column("Value")
-        table.add_row("Summary", data["summary"])
-        table.add_row("Issues", ", ".join(data["issues"]) or "None")
-        table.add_row("Recommendations", " | ".join(data["recommendations"]))
-        console.print(table)
+        payload = {
+            "Summary": display_value(data["summary"]),
+            "Issues": display_value(", ".join(data["issues"]) or "None"),
+            "Recommendations": display_value(" | ".join(data["recommendations"])),
+        }
+        output_json_or_table(payload, "Doctor")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Doctor command failed: %s", exc)
-        typer.echo(f"Unable to run doctor: {exc}", err=True)
+        emit_cli_error("run doctor", exc)
 
 
 @app.command()
@@ -304,16 +349,14 @@ def report() -> None:
         text = export_text_report("reports/sysdoc_report.txt")
         json_path = export_json_report("reports/sysdoc_report.json")
         html_path = export_html_report("reports/sysdoc_report.html")
-        table = Table(title="Reports")
-        table.add_column("Format")
-        table.add_column("Path")
-        table.add_row("TXT", str(text))
-        table.add_row("JSON", str(json_path))
-        table.add_row("HTML", str(html_path))
-        console.print(table)
+        payload = {
+            "TXT": str(text),
+            "JSON": str(json_path),
+            "HTML": str(html_path),
+        }
+        output_json_or_table(payload, "Reports")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Report command failed: %s", exc)
-        typer.echo(f"Unable to export reports: {exc}", err=True)
+        emit_cli_error("export reports", exc)
 
 
 @app.command()
@@ -329,8 +372,7 @@ def ports() -> None:
             table.add_row(str(item["port"]), "open" if item["open"] else "closed")
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Ports command failed: %s", exc)
-        typer.echo(f"Unable to scan ports: {exc}", err=True)
+        emit_cli_error("scan ports", exc)
 
 
 @app.command()
@@ -348,8 +390,7 @@ def nmap() -> None:
             table.add_row("No open ports detected")
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Nmap command failed: %s", exc)
-        typer.echo(f"Unable to run nmap: {exc}", err=True)
+        emit_cli_error("run nmap", exc)
 
 
 @app.command()
@@ -358,15 +399,13 @@ def speed() -> None:
 
     try:
         data = measure_speed()
-        table = Table(title="Speed")
-        table.add_column("Metric")
-        table.add_column("Value")
-        table.add_row("Download", f"{data['download_mbps']} Mbps")
-        table.add_row("Upload", f"{data['upload_mbps']} Mbps")
-        console.print(table)
+        payload = {
+            "Download": f"{data['download_mbps']} Mbps",
+            "Upload": f"{data['upload_mbps']} Mbps",
+        }
+        output_json_or_table(payload, "Speed")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Speed command failed: %s", exc)
-        typer.echo(f"Unable to measure speed: {exc}", err=True)
+        emit_cli_error("measure speed", exc)
 
 
 @app.command()
@@ -376,8 +415,7 @@ def update() -> None:
     try:
         console.print("SysDoc is up to date for this local build.")
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Update command failed: %s", exc)
-        typer.echo(f"Unable to run update check: {exc}", err=True)
+        emit_cli_error("run update check", exc)
 
 
 @app.command(name="doctor-fix")
@@ -394,8 +432,7 @@ def doctor_fix() -> None:
             table.add_row(recommendation, "suggested")
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Doctor fix command failed: %s", exc)
-        typer.echo(f"Unable to apply doctor fix: {exc}", err=True)
+        emit_cli_error("apply doctor fix", exc)
 
 
 @app.command()
@@ -413,8 +450,7 @@ def install() -> None:
             table.add_row("1", "No installation steps were detected for this platform.")
         console.print(table)
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Install command failed: %s", exc)
-        typer.echo(f"Unable to prepare installation steps: {exc}", err=True)
+        emit_cli_error("prepare installation steps", exc)
 
 
 if __name__ == "__main__":

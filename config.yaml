@@ -1,0 +1,5 @@
+colors: true
+language: pt
+theme: dark
+log_level: INFO
+timeout: 5

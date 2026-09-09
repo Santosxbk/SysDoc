@@ -148,7 +148,7 @@ The current implementation has been verified with:
 pytest -q
 ```
 
-Result: 11 passed.
+Result: 18 passed.
 
 ---
 
