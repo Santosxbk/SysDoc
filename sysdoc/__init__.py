@@ -11,7 +11,7 @@ def _get_version() -> str:
     try:
         return version("sysdoc")
     except PackageNotFoundError:
-        return "0.1.0"
+        return "1.0.0"
 
 
 __version__ = _get_version()

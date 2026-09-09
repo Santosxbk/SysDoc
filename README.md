@@ -1,5 +1,7 @@
 # SysDoc
 
+Version 1.0.0
+
 Modern cross-platform system diagnostics toolkit for Linux, Windows and macOS.
 
 SysDoc provides a polished terminal experience to inspect hardware health, network connectivity, system performance, security posture and generated reports from a single command-line interface.
