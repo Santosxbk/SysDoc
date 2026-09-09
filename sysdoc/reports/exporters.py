@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Template
+try:
+    from jinja2 import Template
+except ModuleNotFoundError:  # pragma: no cover - optional dependency fallback
+    Template = None
 
 from sysdoc.diagnostics.system import analyze_cpu, analyze_disk, analyze_memory
 from sysdoc.hardware.monitor import get_battery_info, get_gpu_info, get_temperature_info
@@ -76,34 +79,51 @@ def export_html_report(path: str | Path | None = None) -> Path:
     report_path = Path(path or "reports/sysdoc_report.html")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        template = Template("""
-        <html>
-          <head><title>SysDoc Report</title></head>
-          <body>
-            <h1>SysDoc Report</h1>
-            <p>Generated: {{ generated_at }}</p>
-            <h2>System</h2>
-            <ul>
-              <li>OS: {{ os }}</li>
-              <li>Python: {{ python }}</li>
-            </ul>
-            <h2>Diagnostics</h2>
-            <ul>
-              <li>CPU: {{ cpu.severity }} - {{ cpu.recommendation }}</li>
-              <li>Memory: {{ memory.severity }} - {{ memory.recommendation }}</li>
-              <li>Disk: {{ disk.severity }} - {{ disk.recommendation }}</li>
-            </ul>
-          </body>
-        </html>
-        """)
-        rendered = template.render(
-            generated_at=datetime.now(timezone.utc).isoformat(),
-            os=get_os_name(),
-            python=get_python_version(),
-            cpu=analyze_cpu(),
-            memory=analyze_memory(),
-            disk=analyze_disk(),
-        )
+        generated_at = datetime.now(timezone.utc).isoformat()
+        cpu = analyze_cpu()
+        memory = analyze_memory()
+        disk = analyze_disk()
+
+        if Template is not None:
+            rendered = Template("""
+            <html>
+              <head><title>SysDoc Report</title></head>
+              <body>
+                <h1>SysDoc Report</h1>
+                <p>Generated: {{ generated_at }}</p>
+                <h2>System</h2>
+                <ul>
+                  <li>OS: {{ os }}</li>
+                  <li>Python: {{ python }}</li>
+                </ul>
+                <h2>Diagnostics</h2>
+                <ul>
+                  <li>CPU: {{ cpu.severity }} - {{ cpu.recommendation }}</li>
+                  <li>Memory: {{ memory.severity }} - {{ memory.recommendation }}</li>
+                  <li>Disk: {{ disk.severity }} - {{ disk.recommendation }}</li>
+                </ul>
+              </body>
+            </html>
+            """).render(
+                generated_at=generated_at,
+                os=get_os_name(),
+                python=get_python_version(),
+                cpu=cpu,
+                memory=memory,
+                disk=disk,
+            )
+        else:
+            rendered = (
+                "<html><head><title>SysDoc Report</title></head><body>"
+                f"<h1>SysDoc Report</h1><p>Generated: {generated_at}</p>"
+                f"<h2>System</h2><ul><li>OS: {get_os_name()}</li><li>Python: {get_python_version()}</li></ul>"
+                f"<h2>Diagnostics</h2><ul>"
+                f"<li>CPU: {cpu['severity']} - {cpu['recommendation']}</li>"
+                f"<li>Memory: {memory['severity']} - {memory['recommendation']}</li>"
+                f"<li>Disk: {disk['severity']} - {disk['recommendation']}</li>"
+                "</ul></body></html>"
+            )
+
         report_path.write_text(rendered, encoding="utf-8")
         logger.info("HTML report written to %s", report_path)
         return report_path
