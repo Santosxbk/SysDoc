@@ -28,5 +28,11 @@ dev = ["pytest>=8.0"]
 [project.scripts]
 sysdoc = "sysdoc.cli.app:app"
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["sysdoc*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
