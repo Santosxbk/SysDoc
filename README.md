@@ -68,6 +68,12 @@ python main.py doctor
 python main.py report
 ```
 
+For machine-readable output, use:
+
+```bash
+python main.py --json scan
+```
+
 After installation, you can also run:
 
 ```bash
@@ -148,7 +154,7 @@ The current implementation has been verified with:
 pytest -q
 ```
 
-Result: 18 passed.
+Result: 22 passed.
 
 ---
 
